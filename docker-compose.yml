@@ -1,0 +1,71 @@
+
+services:
+  # DynamoDB Local
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: illust-dynamodb-local
+    ports:
+      - "8000:8000"
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "./data"]
+    working_dir: /home/dynamodblocal
+    volumes:
+      - ./data/dynamodb:/home/dynamodblocal/data
+    networks:
+      - illust-network
+
+  # DynamoDB Admin
+  dynamodb-admin:
+    image: aaronshaf/dynamodb-admin
+    container_name: illust-dynamodb-admin
+    ports:
+      - "8001:8001"
+    environment:
+      DYNAMO_ENDPOINT: http://dynamodb-local:8000
+      AWS_REGION: ap-northeast-1
+      AWS_ACCESS_KEY_ID: local-access-key
+      AWS_SECRET_ACCESS_KEY: local-secret-key
+    depends_on:
+      - dynamodb-local
+    networks:
+      - illust-network
+
+  # MinIO (S3互換ストレージ)
+  minio:
+    image: minio/minio:latest
+    container_name: illust-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./data/minio:/data
+    networks:
+      - illust-network
+
+  # MinIO Client (バケット初期化用)
+  minio-client:
+    image: minio/mc:latest
+    container_name: illust-minio-client
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 10;
+      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc mb myminio/illust-bucket;
+      /usr/bin/mc policy set public myminio/illust-bucket;
+      exit 0;
+      "
+    networks:
+      - illust-network
+
+networks:
+  illust-network:
+    driver: bridge
+
+volumes:
+  dynamodb-data:
+  minio-data:
